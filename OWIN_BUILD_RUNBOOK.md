@@ -223,9 +223,15 @@ Các quyết định này đã chốt với chủ dự án. Agent code đúng th
 - [x] Nạp GIS trong `index.html`. Nút "Kết nối Google" → `connectGoogle()` (SyncBar). Mọi call Drive qua `ensureToken()` (driveSync).
 
 **TEST 5.2 (cần con người bấm consent — `👤 HUMAN`):**
-- [ ] ⏸ HUMAN-BLOCKED — chờ TASK 5.1 (OAuth+backend) + bấm consent. Bấm Kết nối Google → popup consent → access_token.
-- [ ] ⏸ HUMAN-BLOCKED — token hết hạn → `ensureToken()` refresh ngầm không popup.
-- [ ] ⏸ HUMAN-BLOCKED — thu hồi quyền → call tiếp nhận `NEED_RELOGIN`, UI hiện lại nút kết nối. *(Code đường đi NEED_RELOGIN đã có trong googleAuth.ts + SyncBar.)*
+- [x] ✅ PASS — Human bấm Kết nối Google → consent → "Đã kết nối Google." (backend lưu refresh_token).
+- [x] ✅ PASS — backend `refresh` trả access_token mới (expires_in 3599) không popup → refresh ngầm OK.
+- [ ] ⏸ HUMAN (tuỳ chọn) — thu hồi quyền ở myaccount.google.com → call tiếp nhận `NEED_RELOGIN`. *(Code đường đi NEED_RELOGIN có sẵn; chưa chạy vì thu hồi quyền là thao tác phá huỷ, để human tự kiểm khi muốn.)*
+
+> **Cấu hình thực tế đã chốt khi nghiệm thu live (2026-06-12):**
+> - OAuth Client ID popup mode → Script Property `REDIRECT_URI` = **`postmessage`** (không phải URL).
+> - JavaScript origins: `https://t-anh17.github.io` + `http://localhost:5173`.
+> - **Phải Enable "Google Drive API"** trong project (nếu không: 403 SERVICE_DISABLED khi upload).
+> - Tài khoản test phải nằm trong **Test users** (nếu không: 403 access_denied khi consent).
 
 ### TASK 5.3 — Sync engine: merge LWW + tombstone + conflict dialog (BR-8)
 - [x] Tạo `src/features/sync/merge.ts`: per-entity LWW, tombstone `deleted:true` không hồi sinh (2 chiều).
@@ -236,14 +242,15 @@ Các quyết định này đã chốt với chủ dự án. Agent code đúng th
 - [x] Local có S99 mới, remote chưa có → sau merge có S99. ✅
 - [x] Local xóa S5 (deleted:true, mới hơn) → KHÔNG hồi sinh (cả chiều remote-xoá). ✅
 - [x] Local sửa giá S1 (16:40), remote sửa tên S1 (16:41) → KHÔNG tự nuốt → trả conflict. ✅ + resolveConflict áp lựa chọn.
+- [x] ✅ **LIVE PASS (Drive thật)** — local sửa giá SLIDE1 (9.999.000) + remote sửa tên qua Drive → `syncNow()` trả `state:'conflict'` đúng, KHÔNG tự nuốt.
 
 ### TASK 5.4 — Hàng đợi sync offline
 - [x] Queue thay đổi vào IndexedDB (`syncQueue.ts`, gộp theo id+kind). Orchestrator `syncEngine.syncNow()`: ensureToken→tải remote→merge→conflict?→đẩy lên→lưu base→clear queue. Skip êm khi offline/chưa cấu hình.
 
 **TEST 5.4:**
 - [x] Tắt mạng → nhập kích thước, tính tiền, XUẤT WORD vẫn chạy (local-first). ✅ by-construction — toàn app chạy trên IndexedDB, Word export thuần client (Phase 2/4 đã chứng minh không cần mạng); queue logic vitest 3 ca PASS.
-- [ ] ⏸ HUMAN-BLOCKED — Bật mạng → queue flush lên Drive đúng. Chờ TASK 5.1.
-- [ ] ⏸ HUMAN-BLOCKED — Máy A thêm SP → máy B sync thấy. Chờ TASK 5.1.
+- [x] ✅ **LIVE PASS** — Bật mạng → `syncNow()` đẩy `owin_db.json` lên Drive appDataFolder (1878 bytes, chỉ metadata BR-9; tombstone deleted:true cũng sync — BR-8). Verify đọc lại file trên Drive đúng nội dung.
+- [x] ✅ **LIVE PASS (đa máy)** — giả lập máy A thêm "Cửa trượt Owin Cao Cấp" (SLIDE1) lên Drive → máy B `syncNow()` → merge → local có SLIDE1.
 
 ### TASK 5.5 — Build & deploy GitHub Pages
 - [x] `vite.config.ts` `base` = `/<repo>/` qua env `BASE_PATH` (verify: asset prefixed `/owin-quote-tool/`, GIS external giữ nguyên). GitHub Actions `.github/workflows/deploy.yml` (build owin-quote-tool/ → Pages, inject VITE_* từ repo secrets).
@@ -272,6 +279,7 @@ Các quyết định này đã chốt với chủ dự án. Agent code đúng th
 
 > Định dạng mỗi dòng: `[YYYY-MM-DD HH:MM] TASK x.y | TRẠNG THÁI (PASS/FAIL/BLOCKED/HUMAN-WAIT) | ghi chú ngắn (lỗi gì, sửa gì, version lib, cần người làm gì)`
 
+- [2026-06-12 16:20] PHASE 5 | LIVE PASS (Google thật) | Human tạo OAuth+Apps Script+consent. Verify end-to-end với backend+Drive THẬT: refresh ngầm (token expires 3599), đẩy owin_db.json lên appDataFolder (1878B metadata-only BR-9), đa máy A→B thấy SP, conflict KHÔNG tự nuốt (BR-8). Cấu hình chốt: REDIRECT_URI=postmessage, phải Enable Drive API, account vào Test users. Đã dọn dữ liệu test, Drive reset về 5 seed. Còn: deploy Pages live + (tuỳ chọn) test revoke→NEED_RELOGIN.
 - [2026-06-12 08:41] PHASE 5 | CODE DONE (live ⏸HUMAN) | merge.ts (LWW+tombstone+conflict, vitest 7 ca PASS), googleAuth.ts (port TS, env config), driveSync.ts (appData, owin_db.json + img_<id> tách BR-9), syncQueue.ts (vitest 3 ca), syncEngine.syncNow, SyncBar (conflict dialog). vite base via BASE_PATH (verify /owin-quote-tool/), GH Actions deploy.yml. dist grep: KHÔNG có client_secret/refresh_token. vitest 40/40. SECRET: VITE_SHARED_SECRET qua .env (gitignored) — nhúng bundle theo thiết kế (client phải gửi); client_secret KHÔNG bao giờ vào frontend.
 - [2026-06-12 08:33] PHASE 4 GATE | PASS (layout đẹp ⏸HUMAN) | Báo giá real-time + preview 2 format + xuất Word. vitest 30/30 (TEST 4.2: 4.296.032/1.000.000/5.296.032; TEST 4.5 node: F1 số khớp + F2 nhúng ảnh a:blip). Browser: BR-6 override không phá kho, F2 kích thước gộp, export F1/F2 ra blob docx không lỗi.
 - [2026-06-12 08:31] TASK 4.5 | code+VERIFY | wordExport.ts. docxtemplater@3.68.7 render(data)+toBlob; image-module-free@1.1.1 getImage→ArrayBuffer (strip mọi data:*;base64,), getSize theo Image thật. declarations.d.ts cho *.docx?url + image module.
